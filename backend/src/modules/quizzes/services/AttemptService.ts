@@ -32,7 +32,7 @@ import {
   MongoDatabase,
   ILotItem,
 } from '#shared/index.js';
-import { injectable, inject } from 'inversify';
+import { injectable, inject, optional } from 'inversify';
 import { ClientSession, ObjectId } from 'mongodb';
 import { NotFoundError, BadRequestError, ForbiddenError } from 'routing-controllers';
 import { QuestionBankService } from './QuestionBankService.js';
@@ -69,6 +69,8 @@ import {
   IStudentSegmentQuestion,
 } from '#root/modules/studentQuestions/classes/transformers/StudentSegmentQuestion.js';
 import { STUDENT_QUESTION_TYPES } from '#root/modules/studentQuestions/types.js';
+import { SPACED_REPETITION_TYPES } from '#root/modules/spacedRepetition/types.js';
+import type { ReviewSeedingService } from '#root/modules/spacedRepetition/services/ReviewSeedingService.js';
 
 const PEER_QUESTION_DEFAULT_POINTS = 0;
 const PEER_QUESTION_DEFAULT_TIME_LIMIT_SECONDS = 60;
@@ -120,6 +122,12 @@ class AttemptService extends BaseService {
 
     @inject(GLOBAL_TYPES.Database)
     private readonly database: MongoDatabase,
+
+    // Optional: containers built without the spacedRepetition module (some
+    // tests, single-module deployments) still get a working AttemptService.
+    @inject(SPACED_REPETITION_TYPES.ReviewSeedingService)
+    @optional()
+    private readonly reviewSeedingService?: ReviewSeedingService,
   ) {
     super(database);
   }
@@ -784,6 +792,25 @@ class AttemptService extends BaseService {
     )
     /* -------------------- UPDATE SUBMISSION (SMALL WRITE) -------------------- */
     await this.submissionRepository.update(submissionId, { gradingResult });
+
+    // Schedule the questions the student got wrong for spaced repetition
+    // review (#1047). Not awaited: it never throws and must not slow down or
+    // affect the submission.
+    if (
+      this.reviewSeedingService &&
+      !isSkipped &&
+      courseId &&
+      courseVersionId
+    ) {
+      void this.reviewSeedingService.seedFromQuizGrading({
+        userId: userId.toString(),
+        courseId,
+        courseVersionId,
+        cohortId,
+        quizId,
+        feedback: gradingResult.overallFeedback ?? [],
+      });
+    }
 
     const isPassed = gradingResult.gradingStatus === "PASSED"
     if (!isSkipped && (!isItemCompleted || isPassed)) {

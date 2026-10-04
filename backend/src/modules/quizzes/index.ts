@@ -15,6 +15,7 @@ import { authContainerModule } from '../auth/container.js';
 import { notificationsContainerModule } from '../notifications/container.js';
 import { usersContainerModule } from '../users/container.js';
 import { studentQuestionsContainerModule } from '../studentQuestions/container.js';
+import { spacedRepetitionContainerModule } from '../spacedRepetition/container.js';
 
 export const quizzesContainerModules: ContainerModule[] = [
   quizzesContainerModule,
@@ -24,6 +25,7 @@ export const quizzesContainerModules: ContainerModule[] = [
   notificationsContainerModule,
   usersContainerModule,
   studentQuestionsContainerModule,
+  spacedRepetitionContainerModule,
 ];
 
 export const quizzesModuleControllers: Function[] = [
