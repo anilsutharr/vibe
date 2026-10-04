@@ -70,6 +70,7 @@ Visit: `http://localhost:3000/docs`
 ## 🐛 Having Issues?
 
 - Make sure all dependencies are installed correctly
+- On Windows, follow the step-by-step [Local Setup on Windows](./windows-local-setup.md) guide, which also lists common errors and their fixes
 - Open an issue or ask in the [GitHub Discussions](https://github.com/continuousactivelearning/vibe/discussions)
 
 ---

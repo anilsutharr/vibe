@@ -11,6 +11,7 @@ This guide outlines the day-to-day workflow and expectations for interns at ViBe
 
 1. **Set up your development environment**
    - Follow the [Installation Guide](../getting-started/intro.md)
+   - On Windows, use [Local Setup on Windows](../getting-started/windows-local-setup.md) to run everything locally with the Firebase emulator
    - Make sure all tools and dependencies are properly installed
    
 2. **Introduce yourself in GitHub Discussions**
