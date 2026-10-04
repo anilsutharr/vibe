@@ -795,6 +795,52 @@ export interface IShareLink {
   revokedAt?: Date;
 }
 
+/** Why a question was added to a student's spaced repetition reviews. */
+export type ReviewItemSource = 'QUIZ_MISS' | 'BANK_TOPUP';
+
+/** RETIRED items stay for history but are never scheduled again. */
+export type ReviewItemStatus = 'ACTIVE' | 'RETIRED';
+
+/** The video a student can rewatch for the concept a review item tests. */
+export interface IReviewItemVideoRef {
+  moduleId: string;
+  sectionId: string;
+  itemId: string;
+}
+
+/**
+ * One question a student is reviewing with spaced repetition (SM-2), scoped to
+ * a course version. Unique per (userId, courseVersionId, questionId).
+ */
+export interface IReviewItem {
+  _id?: string | ObjectId | null;
+  userId: string | ObjectId;
+  courseId: string | ObjectId;
+  courseVersionId: string | ObjectId;
+  cohortId?: string | ObjectId;
+  questionId: string | ObjectId;
+  /** The quiz the question was missed in, or drawn from for a top-up. */
+  quizId: string | ObjectId;
+  source: ReviewItemSource;
+  relatedVideo?: IReviewItemVideoRef;
+  /** SM-2 `n`: correct reviews in a row. */
+  repetitions: number;
+  /** SM-2 `EF`: starts at 2.5, never below 1.3. */
+  easeFactor: number;
+  /** SM-2 `I`: days until the next review. */
+  intervalDays: number;
+  nextReviewAt: Date;
+  lastReviewedAt?: Date;
+  /** Recall quality (0-5) given at the last review. */
+  lastQuality?: number;
+  reviewCount: number;
+  /** Times the item was answered wrongly in a review. */
+  lapses: number;
+  status: ReviewItemStatus;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // Interface for proctoring settings.
 /*export interface IProctoringSettings {
   components: ProctoringComponent[];
