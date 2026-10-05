@@ -157,7 +157,11 @@ All routes need a signed-in student, only act on that student's own reviews, and
 
 ## Demo video
 
-A one-minute demo of the feature, recorded on a local setup, is added next to this page.
+A one-minute silent demo recorded on a local setup: the dashboard card and sidebar badge, answering three due reviews (correct and sure, wrong, correct but unsure), the rewatch hint after a miss, the end-of-session summary, and the dashboard once nothing is due.
+
+<video controls width="100%" src={require('./spaced-repetition-demo.mp4').default} />
+
+[Download or open the demo video (spaced-repetition-demo.mp4)](./spaced-repetition-demo.mp4)
 
 ## Limitations and future work
 
