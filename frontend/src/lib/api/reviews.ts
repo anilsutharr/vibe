@@ -1,5 +1,6 @@
 import type {
   AnswerReviewInput,
+  CourseReviewInsights,
   DueReview,
   ReviewAnswerResult,
   ReviewSummary,
@@ -78,5 +79,15 @@ export function answerReview(
   return apiFetch<ReviewAnswerResult>(
     `${BASE_URL}/${encodeURIComponent(reviewItemId)}/answer`,
     {method: 'POST', body: JSON.stringify(input)},
+  );
+}
+
+/** Instructor view: what students of a course version miss and forget. */
+export function getCourseReviewInsights(
+  courseId: string,
+  versionId: string,
+): Promise<CourseReviewInsights> {
+  return apiFetch<CourseReviewInsights>(
+    `${BASE_URL}/insights/courses/${encodeURIComponent(courseId)}/versions/${encodeURIComponent(versionId)}`,
   );
 }

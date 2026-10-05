@@ -64,6 +64,7 @@ import {
   DropdownMenuItem
 } from "@/components/ui/dropdown-menu";
 import CourseInstructors from "./course-instructors"
+import { useReviewSummary } from "@/hooks/review-hooks"
 
 // Types for quiz functionality
 
@@ -230,6 +231,8 @@ export default function CourseEnrollmentsContainer() {
 function CourseEnrollments() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  // Shows the Review Insights card only when spaced repetition is on (#1047).
+  const { isAvailable: hasReviews } = useReviewSummary()
   const { user } = useAuthStore()
 
   // Get course info from store
@@ -1620,6 +1623,23 @@ function CourseEnrollments() {
               </div>
             </CardHeader>
           </Card>
+
+          {/* Spaced repetition review insights (#1047); hidden while reviews are off */}
+          {hasReviews && (
+            <Card
+              className="border-0 shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md hover:border-primary/20"
+              onClick={() => navigate({ to: "/teacher/courses/review-insights" })}
+            >
+              <CardHeader className="py-4">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <span>🔁 Review Insights</span>
+                </CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  See which quiz questions students keep forgetting, and the video that teaches each one.
+                </p>
+              </CardHeader>
+            </Card>
+          )}
 
           {/* Search */}
           <div className="flex flex-col sm:flex-row gap-4">

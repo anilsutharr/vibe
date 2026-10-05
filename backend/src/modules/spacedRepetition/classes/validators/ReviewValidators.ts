@@ -51,6 +51,18 @@ export class ReviewItemIdParams {
   reviewItemId: string;
 }
 
+export class CourseVersionParams {
+  @JSONSchema({description: 'The course', type: 'string'})
+  @IsMongoId()
+  @IsNotEmpty()
+  courseId: string;
+
+  @JSONSchema({description: 'A version of that course', type: 'string'})
+  @IsMongoId()
+  @IsNotEmpty()
+  versionId: string;
+}
+
 export class AnswerReviewBody {
   @JSONSchema({
     description: 'Type of the question being answered',
@@ -84,5 +96,6 @@ export class AnswerReviewBody {
 export const SPACED_REPETITION_VALIDATORS = [
   DueReviewsQuery,
   ReviewItemIdParams,
+  CourseVersionParams,
   AnswerReviewBody,
 ];

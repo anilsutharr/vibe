@@ -389,4 +389,84 @@ describe('ReviewItemRepository', () => {
       await repo.findReviewedQuestionIds(student, courseVersionId, []),
     ).toEqual(new Set());
   });
+
+  it('ranks questions in a course version by how often students forgot them', async () => {
+    const qOften = new ObjectId().toString();
+    const qOnce = new ObjectId().toString();
+    const thirdStudent = new ObjectId().toString();
+    const answer = async (userId: string, qid: string, lapses: number) => {
+      const item = (await allItems()).find(
+        i => i.userId.toString() === userId && i.questionId.toString() === qid,
+      )!;
+      for (let i = 0; i < 2; i++) {
+        await repo.recordReview(item._id!.toString(), userId, {
+          repetitions: 0,
+          easeFactor: 2.5,
+          intervalDays: 1,
+          nextReviewAt: day('2026-10-06'),
+          quality: i < lapses ? 1 : 5,
+          reviewedAt: firstMissAt,
+          isLapse: i < lapses,
+        });
+      }
+    };
+    // qOften: missed by two students in quizzes, forgotten 3 times in reviews.
+    for (const userId of [student, otherStudent]) {
+      await repo.upsertQuizMiss(
+        miss({userId, questionId: qOften}),
+        day('2026-10-05'),
+        INITIAL_EASE_FACTOR,
+        firstMissAt,
+      );
+    }
+    await answer(student, qOften, 2);
+    await answer(otherStudent, qOften, 1);
+    // qOnce: a retention check for a third student, forgotten once.
+    await repo.insertRetentionCheck(
+      miss({userId: thirdStudent, questionId: qOnce}),
+      {repetitions: 2, easeFactor: 2.5, intervalDays: 7},
+      day('2026-10-11'),
+      firstMissAt,
+    );
+    await answer(thirdStudent, qOnce, 1);
+    // Another course version must not be counted.
+    await repo.upsertQuizMiss(
+      miss({courseVersionId: otherVersionId, questionId: qOften}),
+      day('2026-10-05'),
+      INITIAL_EASE_FACTOR,
+      firstMissAt,
+    );
+
+    const {totals, questions} = await repo.statsForCourseVersion(
+      courseVersionId,
+      10,
+    );
+    expect(totals).toEqual({
+      students: 3,
+      questions: 2,
+      reviews: 6,
+      forgotten: 4,
+    });
+    expect(
+      questions.map(q => [
+        q.questionId,
+        q.missedInQuiz,
+        q.students,
+        q.reviews,
+        q.forgotten,
+      ]),
+    ).toEqual([
+      [qOften, 2, 2, 4, 3],
+      [qOnce, 0, 1, 2, 1],
+    ]);
+
+    const empty = await repo.statsForCourseVersion(
+      new ObjectId().toString(),
+      10,
+    );
+    expect(empty).toEqual({
+      totals: {students: 0, questions: 0, reviews: 0, forgotten: 0},
+      questions: [],
+    });
+  });
 });

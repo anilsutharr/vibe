@@ -86,3 +86,30 @@ export interface ReviewSummary {
   courses: CourseReviewSummary[];
   upcoming: {date: string; count: number}[];
 }
+
+/** One question in the instructor's review insights. */
+export interface QuestionInsight {
+  questionId: string;
+  questionText: string;
+  /** Students who answered it wrongly in a quiz. */
+  missedInQuiz: number;
+  /** Students reviewing it. */
+  students: number;
+  reviews: number;
+  /** Review answers that were wrong. */
+  forgotten: number;
+  /** Share of review answers that were right (0-1), or null before any review. */
+  recallRate: number | null;
+  relatedVideo?: RelatedVideo;
+}
+
+export interface CourseReviewInsights {
+  totals: {
+    students: number;
+    questions: number;
+    reviews: number;
+    forgotten: number;
+    recallRate: number | null;
+  };
+  questions: QuestionInsight[];
+}

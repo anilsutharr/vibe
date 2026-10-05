@@ -3,6 +3,7 @@ import {SPACED_REPETITION_TYPES} from './types.js';
 import {ReviewItemRepository} from '#shared/database/providers/mongo/repositories/ReviewItemRepository.js';
 import {ReviewService} from './services/ReviewService.js';
 import {ReviewSeedingService} from './services/ReviewSeedingService.js';
+import {ReviewInsightsService} from './services/ReviewInsightsService.js';
 import {ReviewController} from './controllers/ReviewController.js';
 
 export const spacedRepetitionContainerModule = new ContainerModule(options => {
@@ -20,6 +21,10 @@ export const spacedRepetitionContainerModule = new ContainerModule(options => {
   options
     .bind(SPACED_REPETITION_TYPES.ReviewSeedingService)
     .to(ReviewSeedingService)
+    .inSingletonScope();
+  options
+    .bind(SPACED_REPETITION_TYPES.ReviewInsightsService)
+    .to(ReviewInsightsService)
     .inSingletonScope();
 
   // Controllers

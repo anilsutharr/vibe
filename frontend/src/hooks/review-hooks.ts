@@ -1,6 +1,7 @@
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {
   answerReview,
+  getCourseReviewInsights,
   getDueReviews,
   getReviewSummary,
   ReviewApiError,
@@ -70,4 +71,14 @@ export function useAnswerReview() {
 export function useRefreshReviews() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({queryKey: reviewKeys.all});
+}
+
+/** Instructor review insights for one course version. */
+export function useCourseReviewInsights(courseId: string, versionId: string) {
+  return useQuery({
+    queryKey: ['reviews', 'insights', courseId, versionId],
+    queryFn: () => getCourseReviewInsights(courseId, versionId),
+    enabled: !!courseId && !!versionId,
+    retry: false,
+  });
 }

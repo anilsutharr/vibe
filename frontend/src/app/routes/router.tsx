@@ -35,6 +35,7 @@ import { useCourseStore } from '@/store/course-store'
 // import CourseEnrollments from '../pages/teacher/course-enrollments'
 import CourseEnrollmentsContainer from '../pages/teacher/course-enrollments'
 import CourseEmotionAnalyticsPage from '../pages/teacher/course-emotion-analytics'
+import CourseReviewInsightsPage from '../pages/teacher/course-review-insights'
 import CourseVideosPage from '../pages/teacher/course-videos'
 import InvitePage from '../pages/teacher/invite'
 import GenerateSectionPage from '@/app/pages/teacher/create-job'
@@ -352,6 +353,13 @@ const teacherCourseEmotionAnalyticsRoute = new Route({
   getParentRoute: () => teacherLayoutRoute,
   path: '/courses/emotion-analytics',
   component: CourseEmotionAnalyticsPage,
+});
+
+// Spaced repetition review insights for instructors (#1047)
+const teacherCourseReviewInsightsRoute = new Route({
+  getParentRoute: () => teacherLayoutRoute,
+  path: '/courses/review-insights',
+  component: CourseReviewInsightsPage,
 });
 
 // Teacher Course Instructors route
@@ -753,6 +761,7 @@ const routeTree = rootRoute.addChildren([
     teacherCourseEnrollmentsRoute,
     teacherCourseVideosRoute,
     teacherCourseEmotionAnalyticsRoute,
+    teacherCourseReviewInsightsRoute,
     teacherAudioManagerRoute,
     teacherAddCourseRoute,
     teacherCourseInviteRoute,

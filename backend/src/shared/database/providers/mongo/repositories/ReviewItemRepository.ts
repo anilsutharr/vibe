@@ -33,6 +33,29 @@ export interface CourseReviewCounts {
   nextDueAt: Date | null;
 }
 
+/** How one question is doing across all students of a course version. */
+export interface QuestionReviewStats {
+  questionId: string;
+  quizId: string;
+  relatedVideo?: IReviewItemVideoRef;
+  /** Students who answered it wrongly in a quiz. */
+  missedInQuiz: number;
+  /** Students with a review item for it (misses and retention checks). */
+  students: number;
+  /** Review answers recorded. */
+  reviews: number;
+  /** Review answers that were wrong: the student had forgotten it. */
+  forgotten: number;
+}
+
+/** Totals for a course version's reviews. */
+export interface CourseVersionReviewTotals {
+  students: number;
+  questions: number;
+  reviews: number;
+  forgotten: number;
+}
+
 /** SM-2 state and review details to save after a student answers a review. */
 export interface ReviewOutcome {
   repetitions: number;
@@ -65,11 +88,16 @@ export class ReviewItemRepository {
       {userId: 1, courseVersionId: 1, questionId: 1},
       {unique: true},
     );
-    // Serves "what is due for this student" and the daily reminder job.
+    // Serves "what is due for this student" and the per-course counts.
     await this.reviewItemCollection.createIndex({
       userId: 1,
       status: 1,
       nextReviewAt: 1,
+    });
+    // Serves the instructor's per-question statistics for a course version.
+    await this.reviewItemCollection.createIndex({
+      courseVersionId: 1,
+      questionId: 1,
     });
 
     this.initialized = true;
@@ -286,6 +314,97 @@ export class ReviewItemRepository {
       mastered: row.mastered,
       nextDueAt: row.nextDueAt ?? null,
     }));
+  }
+
+  /**
+   * Per-question review statistics for a course version across all
+   * students, most forgotten first (then most missed in quizzes), plus
+   * totals. Used for the instructor's "what students keep forgetting" view.
+   */
+  async statsForCourseVersion(
+    courseVersionId: string,
+    limit: number,
+    session?: ClientSession,
+  ): Promise<{
+    totals: CourseVersionReviewTotals;
+    questions: QuestionReviewStats[];
+  }> {
+    await this.init();
+    const [result] = await this.reviewItemCollection
+      .aggregate<{
+        totals: {
+          students: ObjectId[];
+          questions: ObjectId[];
+          reviews: number;
+          forgotten: number;
+        }[];
+        questions: {
+          _id: ObjectId;
+          quizId: ObjectId;
+          relatedVideo?: IReviewItemVideoRef;
+          missedInQuiz: number;
+          students: number;
+          reviews: number;
+          forgotten: number;
+        }[];
+      }>(
+        [
+          {$match: {courseVersionId: new ObjectId(courseVersionId)}},
+          {
+            $facet: {
+              totals: [
+                {
+                  $group: {
+                    _id: null,
+                    students: {$addToSet: '$userId'},
+                    questions: {$addToSet: '$questionId'},
+                    reviews: {$sum: '$reviewCount'},
+                    forgotten: {$sum: '$lapses'},
+                  },
+                },
+              ],
+              questions: [
+                {
+                  $group: {
+                    _id: '$questionId',
+                    quizId: {$first: '$quizId'},
+                    relatedVideo: {$first: '$relatedVideo'},
+                    missedInQuiz: {
+                      $sum: {$cond: [{$eq: ['$source', 'QUIZ_MISS']}, 1, 0]},
+                    },
+                    students: {$sum: 1},
+                    reviews: {$sum: '$reviewCount'},
+                    forgotten: {$sum: '$lapses'},
+                  },
+                },
+                {$sort: {forgotten: -1, missedInQuiz: -1, _id: 1}},
+                {$limit: limit},
+              ],
+            },
+          },
+        ],
+        {session},
+      )
+      .toArray();
+
+    const totals = result?.totals[0];
+    return {
+      totals: {
+        students: totals?.students.length ?? 0,
+        questions: totals?.questions.length ?? 0,
+        reviews: totals?.reviews ?? 0,
+        forgotten: totals?.forgotten ?? 0,
+      },
+      questions: (result?.questions ?? []).map(q => ({
+        questionId: q._id.toString(),
+        quizId: q.quizId.toString(),
+        relatedVideo: q.relatedVideo,
+        missedInQuiz: q.missedInQuiz,
+        students: q.students,
+        reviews: q.reviews,
+        forgotten: q.forgotten,
+      })),
+    };
   }
 
   /**
