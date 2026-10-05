@@ -40,11 +40,9 @@ export const appConfig = {
   // it is safe to self-activate on deploy. Until it first runs, the panel
   // reports watch hours as not yet computed rather than as zero.
   ENABLE_ENROLLMENT_STATS_JOB: env('ENABLE_ENROLLMENT_STATS_JOB') !== 'false',
-  // Default OFF: spaced repetition reviews (#1047) are rolled out in stages.
-  // ENABLE_SPACED_REPETITION turns on review scheduling from quiz misses;
-  // ENABLE_SPACED_REPETITION_JOB separately gates the daily reminder job.
+  // Default OFF: spaced repetition reviews (#1047). Turns on review
+  // scheduling from quiz misses and the /reviews routes and pages.
   ENABLE_SPACED_REPETITION: env('ENABLE_SPACED_REPETITION') === 'true',
-  ENABLE_SPACED_REPETITION_JOB: env('ENABLE_SPACED_REPETITION_JOB') === 'true',
   GOOGLE_APPLICATION_CREDENTIALS: env('GOOGLE_APPLICATION_CREDENTIALS'),
   GCP_BACKUP_BUCKET: env('GCP_BACKUP_BUCKET'),
   GCP_BACKUP_ACTIVITY_BUCKET: env('GCP_BACKUP_ACTIVITY_BUCKET'),

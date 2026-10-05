@@ -796,7 +796,7 @@ export interface IShareLink {
 }
 
 /** Why a question was added to a student's spaced repetition reviews. */
-export type ReviewItemSource = 'QUIZ_MISS' | 'BANK_TOPUP';
+export type ReviewItemSource = 'QUIZ_MISS';
 
 /** RETIRED items stay for history but are never scheduled again. */
 export type ReviewItemStatus = 'ACTIVE' | 'RETIRED';
