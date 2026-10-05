@@ -7,6 +7,7 @@ import { useTheme } from "next-themes"
 import { useAuthStore } from "@/store/auth-store"
 import { useStudentHpEnabled } from "@/hooks/hooks"
 import { useNewAnnouncementIndicator } from "@/hooks/use-new-announcement-indicator"
+import { useReviewSummary } from "@/hooks/review-hooks"
 import { logout } from "@/utils/auth"
 import { AuroraText } from "@/components/magicui/aurora-text"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -48,8 +49,14 @@ export function StudentSidebar() {
     navigate({ to: "/auth" })
   }
 
+  // Reviews nav item only shows when the server has spaced repetition on (#1047).
+  const { data: reviewSummary, isAvailable: hasReviews } = useReviewSummary()
+  const reviewsDue = reviewSummary?.totalDue ?? 0
+
   const visibleItems = STUDENT_NAV_ITEMS.filter(
-    (item) => item.requires !== "hpSystem" || hasHpSystem,
+    (item) =>
+      (item.requires !== "hpSystem" || hasHpSystem) &&
+      (item.requires !== "reviews" || hasReviews),
   )
 
   // One flat yellow for hover/active/press — the active:* + ring overrides kill
@@ -106,6 +113,14 @@ export function StudentSidebar() {
                           <span>{item.title}</span>
                           {showDot && (
                             <span className="absolute left-5 top-1.5 block h-2 w-2 animate-pulse rounded-full bg-red-500" />
+                          )}
+                          {item.indicator === "reviews" && reviewsDue > 0 && (
+                            <span
+                              className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold leading-none text-primary-foreground tabular-nums group-data-[collapsible=icon]:hidden"
+                              aria-label={`${reviewsDue} reviews due`}
+                            >
+                              {reviewsDue > 99 ? "99+" : reviewsDue}
+                            </span>
                           )}
                         </Link>
                       </SidebarMenuButton>

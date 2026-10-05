@@ -8,6 +8,7 @@ import { toast } from "sonner";
 // Import components
 import { CourseSection } from "@/components/course/CourseSection";
 import { LearningInsights } from "@/components/dashboard/LearningInsights";
+import { ReviewsDueCard } from "@/components/reviews/ReviewsDueCard";
 // import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar"; // Hidden: Learning Checklist sidebar (commented out, not removed)
 import { EmptyState } from "@/components/ui/EmptyState";
 import { getGreeting, bufferToHex } from "@/utils/helpers";
@@ -249,6 +250,9 @@ function DashboardContent() {
               onBrowse={() => navigate({ to: '/student/courses' })}
               onResume={handleResume}
             />
+
+            {/* Spaced repetition reviews due today (#1047); hidden when none */}
+            <ReviewsDueCard />
 
             <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full space-y-2">
               <div className="flex items-center justify-between gap-3">

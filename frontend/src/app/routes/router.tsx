@@ -22,6 +22,7 @@ import LearningAnalytics from "@/app/pages/student/analytics/LearningAnalytics";
 import StudentProfile from "@/app/pages/student/profile";
 import StudentAnnouncements from "../pages/student/announcements/StudentAnnouncements";
 import StudentMySubmissions from "../pages/student/StudentMySubmissions";
+import ReviewsPage from "../pages/student/ReviewsPage";
 import AddCoursePage from '@/app/pages/teacher/AddCoursePage';
 import TeacherProfile from "@/app/pages/teacher/profile";
 import { AudioTranscripter } from '@/app/pages/teacher/AudioTranscripter'
@@ -571,6 +572,13 @@ const studentMySubmissionsRoute = new Route({
   component: StudentMySubmissions,
 });
 
+// Student spaced repetition reviews (#1047)
+const studentReviewsRoute = new Route({
+  getParentRoute: () => studentLayoutRoute,
+  path: '/reviews',
+  component: ReviewsPage,
+});
+
 // Every learner HP page sits behind the per-course opt-in, so each one is
 // wrapped rather than relying on the sidebar to keep learners away.
 const guardStudentHp = (Page: () => React.JSX.Element) => () => (
@@ -783,6 +791,7 @@ const routeTree = rootRoute.addChildren([
     studentLeaderboardRoute,
     studentAnnouncementsRoute,
     studentMySubmissionsRoute,
+    studentReviewsRoute,
     studentHpSystemCohortsRoute,
     studentHpSystemActivitiesRoute,
     studentHpSystemActivitiesDetailRoute,
