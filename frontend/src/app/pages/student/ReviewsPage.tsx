@@ -236,8 +236,19 @@ function ReviewCard({
   return (
     <section className={panel}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span className="truncate">{review.courseName ?? "Course"}</span>
-        <span className="tabular-nums">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate">{review.courseName ?? "Course"}</span>
+          {review.source === "RETENTION_CHECK" && (
+            <Badge
+              variant="outline"
+              className="shrink-0"
+              title="You answered this correctly in the quiz. This checks you still remember it."
+            >
+              Retention check
+            </Badge>
+          )}
+        </span>
+        <span className="shrink-0 tabular-nums">
           Question {position} of {total}
         </span>
       </div>
@@ -446,7 +457,8 @@ function CaughtUp({
             <p className="text-lg font-semibold">No reviews yet</p>
             <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
               When you get a quiz question wrong, it will come back here the next day, then less and less often as
-              you get it right.
+              you get it right. After you pass a quiz, a couple of the questions you got right also come back a
+              week later, to check you still remember them.
             </p>
           </>
         )}

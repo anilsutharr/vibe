@@ -17,6 +17,7 @@ import {Answer} from '#quizzes/interfaces/grading.js';
 import {
   ICourseVersion,
   IReviewItemVideoRef,
+  ReviewItemSource,
 } from '#shared/interfaces/models.js';
 import {SPACED_REPETITION_TYPES} from '../types.js';
 import {
@@ -57,6 +58,8 @@ export interface DueReview {
   /** The question as a quiz shows it: options shuffled, no answers. */
   question: unknown;
   relatedVideo?: RelatedVideo;
+  /** Why the question is being reviewed: missed in a quiz, or a retention check. */
+  source: ReviewItemSource;
   /** Correct reviews in a row so far. */
   repetitions: number;
   dueAt: Date;
@@ -257,6 +260,7 @@ export class ReviewService {
           courseVersionId,
           item.relatedVideo,
         ),
+        source: item.source,
         repetitions: item.repetitions,
         dueAt: item.nextReviewAt,
       });

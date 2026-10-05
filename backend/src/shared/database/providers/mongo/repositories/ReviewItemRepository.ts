@@ -119,6 +119,76 @@ export class ReviewItemRepository {
     );
   }
 
+  /**
+   * Schedules a retention check for a question the student answered
+   * correctly, unless they already have a review item for it (a real miss
+   * always takes precedence). Returns whether an item was created.
+   */
+  async insertRetentionCheck(
+    question: QuizMissInput,
+    state: {repetitions: number; easeFactor: number; intervalDays: number},
+    nextReviewAt: Date,
+    now: Date,
+    session?: ClientSession,
+  ): Promise<boolean> {
+    await this.init();
+    const result = await this.reviewItemCollection.updateOne(
+      {
+        userId: new ObjectId(question.userId),
+        courseVersionId: new ObjectId(question.courseVersionId),
+        questionId: new ObjectId(question.questionId),
+      },
+      {
+        $setOnInsert: {
+          courseId: new ObjectId(question.courseId),
+          ...(question.cohortId
+            ? {cohortId: new ObjectId(question.cohortId)}
+            : {}),
+          quizId: new ObjectId(question.quizId),
+          ...(question.relatedVideo
+            ? {relatedVideo: question.relatedVideo}
+            : {}),
+          source: 'RETENTION_CHECK',
+          repetitions: state.repetitions,
+          easeFactor: state.easeFactor,
+          intervalDays: state.intervalDays,
+          nextReviewAt,
+          reviewCount: 0,
+          lapses: 0,
+          status: 'ACTIVE',
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+      {upsert: true, session},
+    );
+    return result.upsertedCount === 1;
+  }
+
+  /** Which of `questionIds` the student already has a review item for. */
+  async findReviewedQuestionIds(
+    userId: string,
+    courseVersionId: string,
+    questionIds: string[],
+    session?: ClientSession,
+  ): Promise<Set<string>> {
+    await this.init();
+    if (questionIds.length === 0) {
+      return new Set();
+    }
+    const rows = await this.reviewItemCollection
+      .find(
+        {
+          userId: new ObjectId(userId),
+          courseVersionId: new ObjectId(courseVersionId),
+          questionId: {$in: questionIds.map(id => new ObjectId(id))},
+        },
+        {projection: {questionId: 1}, session},
+      )
+      .toArray();
+    return new Set(rows.map(row => row.questionId.toString()));
+  }
+
   /** Active items due at or before `now` for one student, oldest first. */
   async findDueForUser(
     userId: string,

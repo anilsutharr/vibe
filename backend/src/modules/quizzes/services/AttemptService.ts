@@ -809,6 +809,7 @@ class AttemptService extends BaseService {
         cohortId,
         quizId,
         feedback: gradingResult.overallFeedback ?? [],
+        passed: gradingResult.gradingStatus === 'PASSED',
       });
     }
 

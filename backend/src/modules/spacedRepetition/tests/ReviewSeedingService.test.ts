@@ -14,6 +14,8 @@ const GROUP_ID = new ObjectId().toString();
 const Q_WRONG = new ObjectId().toString();
 const Q_PARTIAL = new ObjectId().toString();
 const Q_RIGHT = new ObjectId().toString();
+const Q_RIGHT_2 = new ObjectId().toString();
+const Q_RIGHT_3 = new ObjectId().toString();
 const Q_DESCRIPTIVE = new ObjectId().toString();
 
 const question = (id: string, type = 'SELECT_ONE_IN_LOT') => ({
@@ -28,13 +30,19 @@ const TOMORROW = new Date('2026-10-05T18:30:00Z');
 const VIDEO = {moduleId: 'm1', sectionId: 's1', itemId: 'video1'};
 
 function buildService(overrides: Record<string, any> = {}) {
-  const reviewItemRepo = {upsertQuizMiss: vi.fn(async () => {})};
+  const reviewItemRepo = {
+    upsertQuizMiss: vi.fn(async () => {}),
+    findReviewedQuestionIds: vi.fn(async () => new Set<string>()),
+    insertRetentionCheck: vi.fn(async () => true),
+  };
   const questionRepo = {
     getByIds: vi.fn(async (ids: string[]) =>
       [
         question(Q_WRONG),
         question(Q_PARTIAL, 'SELECT_MANY_IN_LOT'),
         question(Q_RIGHT),
+        question(Q_RIGHT_2),
+        question(Q_RIGHT_3),
         question(Q_DESCRIPTIVE, 'DESCRIPTIVE'),
       ].filter(q => ids.includes(q._id.toString())),
     ),
@@ -76,12 +84,14 @@ function buildService(overrides: Record<string, any> = {}) {
 
 const input = (
   feedback: {questionId: string; status: 'CORRECT' | 'INCORRECT' | 'PARTIAL'}[],
+  passed = false,
 ) => ({
   userId: USER_ID,
   courseId: COURSE_ID,
   courseVersionId: VERSION_ID,
   quizId: QUIZ_ID,
   feedback,
+  passed,
 });
 
 describe('ReviewSeedingService.seedFromQuizGrading', () => {
@@ -213,5 +223,108 @@ describe('ReviewSeedingService.seedFromQuizGrading', () => {
       ),
     ).resolves.toBe(0);
     expect(consoleError).toHaveBeenCalled();
+  });
+});
+
+describe('ReviewSeedingService retention checks', () => {
+  const originalFlag = appConfig.ENABLE_SPACED_REPETITION;
+  beforeEach(() => {
+    appConfig.ENABLE_SPACED_REPETITION = true;
+  });
+  afterEach(() => {
+    appConfig.ENABLE_SPACED_REPETITION = originalFlag;
+    vi.restoreAllMocks();
+  });
+
+  // 00:00 IST on 12 Oct: seven days after a quiz taken on 5 Oct.
+  const IN_A_WEEK = new Date('2026-10-11T18:30:00Z');
+  const allCorrect = [
+    {questionId: Q_RIGHT, status: 'CORRECT' as const},
+    {questionId: Q_RIGHT_2, status: 'CORRECT' as const},
+    {questionId: Q_RIGHT_3, status: 'CORRECT' as const},
+  ];
+
+  it('brings back two correctly answered questions a week after a passed quiz', async () => {
+    const {service, reviewItemRepo} = buildService();
+    const count = await service.seedFromQuizGrading(
+      input(allCorrect, true),
+      NOW,
+      () => 0,
+    );
+
+    expect(count).toBe(2);
+    expect(reviewItemRepo.upsertQuizMiss).not.toHaveBeenCalled();
+    expect(reviewItemRepo.insertRetentionCheck).toHaveBeenCalledTimes(2);
+    expect(reviewItemRepo.insertRetentionCheck).toHaveBeenCalledWith(
+      expect.objectContaining({
+        questionId: Q_RIGHT,
+        quizId: QUIZ_ID,
+        relatedVideo: VIDEO,
+      }),
+      // Starts as two correct recalls, so a correct check grows to ~18 days.
+      {repetitions: 2, easeFactor: INITIAL_EASE_FACTOR, intervalDays: 7},
+      IN_A_WEEK,
+      NOW,
+    );
+  });
+
+  it('adds no retention checks when the quiz was not passed', async () => {
+    const {service, reviewItemRepo} = buildService();
+    const count = await service.seedFromQuizGrading(
+      input(allCorrect, false),
+      NOW,
+    );
+    expect(count).toBe(0);
+    expect(reviewItemRepo.insertRetentionCheck).not.toHaveBeenCalled();
+  });
+
+  it('schedules misses as usual and checks only the correct answers in a passed quiz', async () => {
+    const {service, reviewItemRepo} = buildService();
+    const count = await service.seedFromQuizGrading(
+      input(
+        [{questionId: Q_WRONG, status: 'INCORRECT' as const}, ...allCorrect],
+        true,
+      ),
+      NOW,
+      () => 0,
+    );
+    expect(count).toBe(3);
+    expect(reviewItemRepo.upsertQuizMiss).toHaveBeenCalledTimes(1);
+    const checked = reviewItemRepo.insertRetentionCheck.mock.calls.map(
+      (call: any[]) => call[0].questionId,
+    );
+    expect(checked).not.toContain(Q_WRONG);
+    expect(checked).toHaveLength(2);
+  });
+
+  it('skips questions the student is already reviewing', async () => {
+    const {service, reviewItemRepo} = buildService();
+    reviewItemRepo.findReviewedQuestionIds.mockResolvedValueOnce(
+      new Set([Q_RIGHT, Q_RIGHT_2]),
+    );
+    await service.seedFromQuizGrading(input(allCorrect, true), NOW);
+    const checked = reviewItemRepo.insertRetentionCheck.mock.calls.map(
+      (call: any[]) => call[0].questionId,
+    );
+    expect(checked).toEqual([Q_RIGHT_3]);
+  });
+
+  it('does not count a check that already existed', async () => {
+    const {service, reviewItemRepo} = buildService();
+    reviewItemRepo.insertRetentionCheck.mockResolvedValue(false);
+    expect(
+      await service.seedFromQuizGrading(input(allCorrect, true), NOW),
+    ).toBe(0);
+  });
+
+  it('never throws when adding a retention check fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const {service, reviewItemRepo} = buildService();
+    reviewItemRepo.insertRetentionCheck.mockRejectedValue(
+      new Error('write failed'),
+    );
+    await expect(
+      service.seedFromQuizGrading(input(allCorrect, true), NOW),
+    ).resolves.toBe(0);
   });
 });

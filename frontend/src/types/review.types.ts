@@ -43,6 +43,8 @@ export interface DueReview {
   courseName?: string;
   question: ReviewQuestion;
   relatedVideo?: RelatedVideo;
+  /** Missed in a quiz, or answered correctly and brought back to check it stuck. */
+  source: 'QUIZ_MISS' | 'RETENTION_CHECK';
   repetitions: number;
   dueAt: string;
 }

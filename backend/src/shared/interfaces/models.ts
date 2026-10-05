@@ -795,8 +795,12 @@ export interface IShareLink {
   revokedAt?: Date;
 }
 
-/** Why a question was added to a student's spaced repetition reviews. */
-export type ReviewItemSource = 'QUIZ_MISS';
+/**
+ * Why a question was added to a student's spaced repetition reviews:
+ * answered wrongly in a quiz, or answered correctly in a passed quiz and
+ * brought back later to check it was remembered.
+ */
+export type ReviewItemSource = 'QUIZ_MISS' | 'RETENTION_CHECK';
 
 /** RETIRED items stay for history but are never scheduled again. */
 export type ReviewItemStatus = 'ACTIVE' | 'RETIRED';

@@ -310,4 +310,83 @@ describe('ReviewItemRepository', () => {
       {date: '2026-10-08', count: 1},
     ]);
   });
+
+  it('adds a retention check only when the student has no item for the question', async () => {
+    const state = {repetitions: 2, easeFactor: 2.5, intervalDays: 7};
+    const inAWeek = day('2026-10-11');
+
+    // New question: created as a retention check.
+    const fresh = new ObjectId().toString();
+    expect(
+      await repo.insertRetentionCheck(
+        miss({questionId: fresh}),
+        state,
+        inAWeek,
+        firstMissAt,
+      ),
+    ).toBe(true);
+
+    // Question already missed: the miss is kept untouched.
+    await repo.upsertQuizMiss(
+      miss(),
+      day('2026-10-05'),
+      INITIAL_EASE_FACTOR,
+      firstMissAt,
+    );
+    expect(
+      await repo.insertRetentionCheck(miss(), state, inAWeek, firstMissAt),
+    ).toBe(false);
+
+    const items = await allItems();
+    const check = items.find(i => i.questionId.toString() === fresh)!;
+    const missed = items.find(i => i.questionId.toString() === questionId)!;
+    expect(check).toMatchObject({
+      source: 'RETENTION_CHECK',
+      repetitions: 2,
+      intervalDays: 7,
+      nextReviewAt: inAWeek,
+      status: 'ACTIVE',
+      reviewCount: 0,
+      lapses: 0,
+    });
+    expect(missed).toMatchObject({
+      source: 'QUIZ_MISS',
+      repetitions: 0,
+      intervalDays: 1,
+      nextReviewAt: day('2026-10-05'),
+    });
+  });
+
+  it('reports which questions the student is already reviewing', async () => {
+    const other = new ObjectId().toString();
+    await repo.upsertQuizMiss(
+      miss(),
+      day('2026-10-05'),
+      INITIAL_EASE_FACTOR,
+      firstMissAt,
+    );
+    // Same question for another student, and in another version.
+    await repo.upsertQuizMiss(
+      miss({questionId: other, userId: otherStudent}),
+      day('2026-10-05'),
+      INITIAL_EASE_FACTOR,
+      firstMissAt,
+    );
+    await repo.upsertQuizMiss(
+      miss({questionId: other, courseVersionId: otherVersionId}),
+      day('2026-10-05'),
+      INITIAL_EASE_FACTOR,
+      firstMissAt,
+    );
+
+    const reviewed = await repo.findReviewedQuestionIds(
+      student,
+      courseVersionId,
+      [questionId, other],
+    );
+    expect([...reviewed]).toEqual([questionId]);
+    expect(
+      await repo.findReviewedQuestionIds(student, courseVersionId, []),
+    ).toEqual(new Set());
+  });
 });

@@ -12,7 +12,13 @@ import type {ProgressService} from '#users/services/ProgressService.js';
 import type {ReviewItemRepository} from '#shared/database/providers/mongo/repositories/ReviewItemRepository.js';
 import {IReviewItemVideoRef} from '#shared/interfaces/models.js';
 import {SPACED_REPETITION_TYPES} from '../types.js';
-import {INITIAL_EASE_FACTOR} from '../constants.js';
+import {
+  INITIAL_EASE_FACTOR,
+  RETENTION_CHECK_DAYS,
+  RETENTION_CHECK_REPETITIONS,
+  RETENTION_CHECKS_PER_QUIZ,
+} from '../constants.js';
+import {pickRetentionChecks} from '../utils/pickRetentionChecks.js';
 import {getNextReviewDate} from '../utils/getNextReviewDate.js';
 import {isReviewableQuestion} from '../utils/isReviewableQuestion.js';
 
@@ -29,11 +35,14 @@ export interface QuizGradingInput {
   cohortId?: string;
   quizId: string;
   feedback: GradedQuestion[];
+  /** Whether the attempt passed the quiz; enables retention checks. */
+  passed?: boolean;
 }
 
 /**
- * Turns questions a student got wrong in a quiz into spaced repetition review
- * items, due the next day.
+ * Turns quiz results into spaced repetition review items: questions answered
+ * wrongly are due the next day, and after a passed quiz a couple of correctly
+ * answered questions come back a week later as retention checks.
  */
 @injectable()
 export class ReviewSeedingService {
@@ -55,58 +64,105 @@ export class ReviewSeedingService {
   ) {}
 
   /**
-   * Schedules every reviewable question graded INCORRECT or PARTIAL.
+   * Schedules every reviewable question graded INCORRECT or PARTIAL for the
+   * next day. If the attempt passed, also schedules up to
+   * RETENTION_CHECKS_PER_QUIZ correctly answered questions the student is not
+   * already reviewing, a week later.
    *
    * Called after a quiz submission is saved. It never throws: reviews are an
    * extra, and a problem here must not affect the student's quiz result.
-   * Returns how many questions were scheduled.
+   * Returns how many review items were created or restarted.
    */
   async seedFromQuizGrading(
     input: QuizGradingInput,
     now: Date = new Date(),
+    random: () => number = Math.random,
   ): Promise<number> {
     if (!appConfig.ENABLE_SPACED_REPETITION) {
       return 0;
     }
     try {
-      const missedIds = [
+      const idsWith = (statuses: GradedQuestion['status'][]) => [
         ...new Set(
           input.feedback
-            .filter(f => f.status === 'INCORRECT' || f.status === 'PARTIAL')
+            .filter(f => statuses.includes(f.status))
             .map(f => f.questionId.toString()),
         ),
       ];
-      if (missedIds.length === 0) {
+      const missedIds = idsWith(['INCORRECT', 'PARTIAL']);
+      const correctIds = input.passed ? idsWith(['CORRECT']) : [];
+      if (missedIds.length === 0 && correctIds.length === 0) {
         return 0;
       }
 
-      const questions = await this.questionRepo.getByIds(missedIds);
-      const reviewableIds = questions
-        .filter(q => isReviewableQuestion(q))
-        .map(q => q._id!.toString());
-      if (reviewableIds.length === 0) {
+      const questions = await this.questionRepo.getByIds([
+        ...missedIds,
+        ...correctIds,
+      ]);
+      const reviewable = new Set(
+        questions
+          .filter(q => isReviewableQuestion(q))
+          .map(q => q._id!.toString()),
+      );
+      const reviewableMisses = missedIds.filter(id => reviewable.has(id));
+      const reviewableCorrect = correctIds.filter(id => reviewable.has(id));
+      if (reviewableMisses.length === 0 && reviewableCorrect.length === 0) {
         return 0;
       }
 
       const relatedVideo = await this.findRelatedVideo(input.quizId);
-      const nextReviewAt = getNextReviewDate(now, 1);
-      for (const questionId of reviewableIds) {
+      const target = (questionId: string) => ({
+        userId: input.userId,
+        courseId: input.courseId,
+        courseVersionId: input.courseVersionId,
+        cohortId: input.cohortId,
+        questionId,
+        quizId: input.quizId,
+        relatedVideo,
+      });
+
+      const missDueAt = getNextReviewDate(now, 1);
+      for (const questionId of reviewableMisses) {
         await this.reviewItemRepo.upsertQuizMiss(
-          {
-            userId: input.userId,
-            courseId: input.courseId,
-            courseVersionId: input.courseVersionId,
-            cohortId: input.cohortId,
-            questionId,
-            quizId: input.quizId,
-            relatedVideo,
-          },
-          nextReviewAt,
+          target(questionId),
+          missDueAt,
           INITIAL_EASE_FACTOR,
           now,
         );
       }
-      return reviewableIds.length;
+
+      let created = reviewableMisses.length;
+      if (reviewableCorrect.length > 0) {
+        const alreadyReviewing =
+          await this.reviewItemRepo.findReviewedQuestionIds(
+            input.userId,
+            input.courseVersionId,
+            reviewableCorrect,
+          );
+        const checks = pickRetentionChecks(
+          reviewableCorrect,
+          alreadyReviewing,
+          RETENTION_CHECKS_PER_QUIZ,
+          random,
+        );
+        const checkDueAt = getNextReviewDate(now, RETENTION_CHECK_DAYS);
+        for (const questionId of checks) {
+          const inserted = await this.reviewItemRepo.insertRetentionCheck(
+            target(questionId),
+            {
+              repetitions: RETENTION_CHECK_REPETITIONS,
+              easeFactor: INITIAL_EASE_FACTOR,
+              intervalDays: RETENTION_CHECK_DAYS,
+            },
+            checkDueAt,
+            now,
+          );
+          if (inserted) {
+            created++;
+          }
+        }
+      }
+      return created;
     } catch (error) {
       console.error(
         `[spacedRepetition] Failed to schedule reviews for quiz ${input.quizId}, user ${input.userId}:`,

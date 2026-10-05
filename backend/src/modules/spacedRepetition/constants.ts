@@ -29,3 +29,20 @@ export const MASTERED_INTERVAL_DAYS = 21;
 
 /** How many days ahead the upcoming-review counts cover. */
 export const UPCOMING_REVIEW_DAYS = 14;
+
+/**
+ * After a student passes a quiz, this many of the questions they answered
+ * correctly come back as retention checks, so students who got everything
+ * right still have their memory checked.
+ */
+export const RETENTION_CHECKS_PER_QUIZ = 2;
+
+/** Days until a retention check is due. */
+export const RETENTION_CHECK_DAYS = 7;
+
+/**
+ * SM-2 state a retention check starts with: the quiz counts as two correct
+ * recalls in a row, so a correct check moves on to round(7 × EF) days rather
+ * than dropping back to SM-2's opening 1-day and 6-day steps.
+ */
+export const RETENTION_CHECK_REPETITIONS = 2;
