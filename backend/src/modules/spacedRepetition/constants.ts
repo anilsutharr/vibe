@@ -17,3 +17,15 @@ export const PASSING_QUALITY = 3;
  * year (no daylight saving), so a fixed offset is exact.
  */
 export const REVIEW_DAY_UTC_OFFSET_MINUTES = 330;
+
+/** The same timezone by name, for date grouping in MongoDB. */
+export const REVIEW_TIMEZONE = 'Asia/Kolkata';
+
+/**
+ * An item reviewed at an interval of this many days or more counts as
+ * mastered (Anki's threshold for a "mature" card).
+ */
+export const MASTERED_INTERVAL_DAYS = 21;
+
+/** How many days ahead the upcoming-review counts cover. */
+export const UPCOMING_REVIEW_DAYS = 14;

@@ -82,12 +82,31 @@ function buildService(
     getByIdWithoutExplanation: vi.fn(async () => withoutExplanations),
   };
   const quizRepo = {getById: vi.fn(async () => quiz)};
+  const courseRepo = {
+    read: vi.fn(async (_courseId: string) => ({
+      name: 'Introduction to Machine Learning',
+    })),
+    readVersion: vi.fn(async () => ({
+      modules: [
+        {
+          moduleId: 'm1',
+          name: 'Basics',
+          sections: [{sectionId: 's1', name: 'Week 1'}],
+        },
+      ],
+    })),
+  };
+  const itemRepo = {
+    readItem: vi.fn(async () => ({name: 'What is gradient descent?'})),
+  };
   const service = new ReviewService(
     reviewItemRepo as any,
     questionRepo as any,
     quizRepo as any,
+    courseRepo as any,
+    itemRepo as any,
   );
-  return {service, reviewItemRepo, questionRepo};
+  return {service, reviewItemRepo, questionRepo, courseRepo, itemRepo};
 }
 
 const answer = (
@@ -118,6 +137,37 @@ describe('ReviewService.getDueReviews', () => {
     expect(shown).toContain('Bagging');
     expect(shown).not.toContain('correctLotItem');
     expect(shown).not.toContain('negative gradient');
+  });
+
+  it('names the course and the video to rewatch, reading each only once', async () => {
+    const versionId = new ObjectId();
+    const {service, courseRepo, itemRepo} = buildService({
+      dueItems: [
+        reviewItem({courseVersionId: versionId}),
+        reviewItem({_id: new ObjectId(), courseVersionId: versionId}),
+      ],
+    });
+    const due = await service.getDueReviews(STUDENT, {}, NOW);
+
+    expect(due).toHaveLength(2);
+    expect(due[0]).toMatchObject({
+      courseName: 'Introduction to Machine Learning',
+      relatedVideo: {
+        ...VIDEO,
+        videoName: 'What is gradient descent?',
+        moduleName: 'Basics',
+        sectionName: 'Week 1',
+      },
+    });
+    expect(courseRepo.readVersion).toHaveBeenCalledTimes(1);
+    expect(itemRepo.readItem).toHaveBeenCalledTimes(1);
+  });
+
+  it('still returns a review when the video name cannot be read', async () => {
+    const {service, itemRepo} = buildService();
+    itemRepo.readItem.mockRejectedValueOnce(new Error('item deleted'));
+    const [due] = await service.getDueReviews(STUDENT, {}, NOW);
+    expect(due.relatedVideo).toMatchObject({...VIDEO, videoName: undefined});
   });
 
   it('skips items whose question was deleted', async () => {
@@ -268,5 +318,58 @@ describe('ReviewService.answerReview', () => {
     await expect(
       service.answerReview(STUDENT, ITEM_ID, answer(RIGHT_OPTION), NOW),
     ).rejects.toThrow(NotFoundError);
+  });
+});
+
+describe('ReviewService.getSummary', () => {
+  it('adds course names, totals what is due and counts the next 14 days from tomorrow', async () => {
+    const {service, reviewItemRepo, courseRepo} = buildService();
+    const courseA = new ObjectId().toString();
+    const courseB = new ObjectId().toString();
+    (reviewItemRepo as any).countByCourseForUser = vi.fn(async () => [
+      {
+        courseId: courseA,
+        courseVersionId: 'v1',
+        due: 3,
+        learning: 2,
+        mastered: 1,
+        nextDueAt: null,
+      },
+      {
+        courseId: courseB,
+        courseVersionId: 'v2',
+        due: 1,
+        learning: 0,
+        mastered: 4,
+        nextDueAt: null,
+      },
+    ]);
+    (reviewItemRepo as any).countDueByDay = vi.fn(async () => [
+      {date: '2026-10-11', count: 2},
+    ]);
+    courseRepo.read.mockImplementation(async (id: string) => ({
+      name: id === courseA ? 'Course A' : 'Course B',
+    }));
+
+    const summary = await service.getSummary(STUDENT, NOW);
+
+    expect(summary.totalDue).toBe(4);
+    expect(summary.courses.map(c => [c.courseName, c.due])).toEqual([
+      ['Course A', 3],
+      ['Course B', 1],
+    ]);
+    expect(summary.upcoming).toEqual([{date: '2026-10-11', count: 2}]);
+    expect((reviewItemRepo as any).countByCourseForUser).toHaveBeenCalledWith(
+      STUDENT,
+      NOW,
+      21,
+    );
+    // From 00:00 IST on 11 Oct up to 00:00 IST on 25 Oct (14 days).
+    expect((reviewItemRepo as any).countDueByDay).toHaveBeenCalledWith(
+      STUDENT,
+      new Date('2026-10-10T18:30:00Z'),
+      new Date('2026-10-24T18:30:00Z'),
+      'Asia/Kolkata',
+    );
   });
 });

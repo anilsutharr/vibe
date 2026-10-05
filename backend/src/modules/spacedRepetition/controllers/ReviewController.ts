@@ -38,6 +38,19 @@ export class ReviewController {
   ) {}
 
   @OpenAPI({
+    summary: 'Review summary',
+    description:
+      'Reviews due now, learning and mastered counts per course, and how many reviews fall due on each of the next 14 days. Returns 404 while spaced repetition is switched off, which clients can use to hide the feature.',
+  })
+  @Authorized()
+  @Get('/summary')
+  @HttpCode(200)
+  async getSummary(@CurrentUser() user: IUser) {
+    this.ensureEnabled();
+    return this.reviewService.getSummary(user._id.toString());
+  }
+
+  @OpenAPI({
     summary: 'List due reviews',
     description:
       'Questions the student got wrong in quizzes and is due to review, oldest first. Each question is shown as in a quiz, without its answer.',

@@ -230,4 +230,84 @@ describe('ReviewItemRepository', () => {
       lastQuality: 1,
     });
   });
+
+  it('counts due, learning and mastered items per course version', async () => {
+    const now = new Date('2026-10-10T04:30:00Z');
+    const schedule = async (
+      questionId: string,
+      versionId: string,
+      intervalDays: number,
+      nextReviewAt: Date,
+    ) => {
+      await repo.upsertQuizMiss(
+        miss({questionId, courseVersionId: versionId}),
+        day('2026-10-05'),
+        INITIAL_EASE_FACTOR,
+        firstMissAt,
+      );
+      const item = (await allItems()).find(
+        i => i.questionId.toString() === questionId,
+      )!;
+      await repo.recordReview(item._id!.toString(), student, {
+        repetitions: 2,
+        easeFactor: 2.5,
+        intervalDays,
+        nextReviewAt,
+        quality: 5,
+        reviewedAt: firstMissAt,
+        isLapse: false,
+      });
+    };
+    const q = () => new ObjectId().toString();
+    // Version 1: one overdue, one learning (6 days), one mastered (30 days).
+    await schedule(q(), courseVersionId, 1, day('2026-10-08'));
+    await schedule(q(), courseVersionId, 6, day('2026-10-15'));
+    await schedule(q(), courseVersionId, 30, day('2026-11-05'));
+    // Version 2: one learning item only.
+    await schedule(q(), otherVersionId, 1, day('2026-10-12'));
+
+    const counts = await repo.countByCourseForUser(student, now, 21);
+    const v1 = counts.find(c => c.courseVersionId === courseVersionId)!;
+    const v2 = counts.find(c => c.courseVersionId === otherVersionId)!;
+    expect(v1).toMatchObject({
+      courseId,
+      due: 1,
+      learning: 1,
+      mastered: 1,
+      nextDueAt: day('2026-10-15'),
+    });
+    expect(v2).toMatchObject({due: 0, learning: 1, mastered: 0});
+    // The course with something due comes first.
+    expect(counts[0].courseVersionId).toBe(courseVersionId);
+    expect(await repo.countByCourseForUser(otherStudent, now, 21)).toEqual([]);
+  });
+
+  it('counts items falling due on each IST day in a range', async () => {
+    const q = () => new ObjectId().toString();
+    const add = (nextReviewAt: Date) =>
+      repo.upsertQuizMiss(
+        miss({questionId: q()}),
+        nextReviewAt,
+        INITIAL_EASE_FACTOR,
+        firstMissAt,
+      );
+    // 00:00 IST and 23:59 IST on 6 Oct fall on the same IST day.
+    await add(day('2026-10-05'));
+    await add(new Date('2026-10-06T18:29:00Z'));
+    await add(day('2026-10-07'));
+    // Outside the range.
+    await add(day('2026-10-20'));
+
+    expect(
+      await repo.countDueByDay(
+        student,
+        day('2026-10-05'),
+        day('2026-10-10'),
+        'Asia/Kolkata',
+      ),
+    ).toEqual([
+      {date: '2026-10-06', count: 2},
+      {date: '2026-10-08', count: 1},
+    ]);
+  });
 });

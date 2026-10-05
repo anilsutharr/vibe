@@ -5,11 +5,26 @@ import {QUIZZES_TYPES} from '#quizzes/types.js';
 import {QuestionProcessor} from '#quizzes/question-processing/QuestionProcessor.js';
 import type {QuestionRepository} from '#quizzes/repositories/providers/mongodb/QuestionRepository.js';
 import type {QuizRepository} from '#quizzes/repositories/providers/mongodb/QuizRepository.js';
-import type {ReviewItemRepository} from '#shared/database/providers/mongo/repositories/ReviewItemRepository.js';
+import type {
+  CourseReviewCounts,
+  ReviewItemRepository,
+} from '#shared/database/providers/mongo/repositories/ReviewItemRepository.js';
+import {GLOBAL_TYPES} from '#root/types.js';
+import {COURSES_TYPES} from '#courses/types.js';
+import type {ICourseRepository} from '#shared/database/interfaces/ICourseRepository.js';
+import type {IItemRepository} from '#shared/database/interfaces/IItemRepository.js';
 import {Answer} from '#quizzes/interfaces/grading.js';
-import {IReviewItemVideoRef} from '#shared/interfaces/models.js';
+import {
+  ICourseVersion,
+  IReviewItemVideoRef,
+} from '#shared/interfaces/models.js';
 import {SPACED_REPETITION_TYPES} from '../types.js';
-import {PASSING_QUALITY} from '../constants.js';
+import {
+  MASTERED_INTERVAL_DAYS,
+  PASSING_QUALITY,
+  REVIEW_TIMEZONE,
+  UPCOMING_REVIEW_DAYS,
+} from '../constants.js';
 import {applySm2} from '../utils/applySm2.js';
 import {getNextReviewDate} from '../utils/getNextReviewDate.js';
 import {isReviewableQuestion} from '../utils/isReviewableQuestion.js';
@@ -27,13 +42,21 @@ import {
 /** At most this many due reviews are returned at once. */
 export const MAX_DUE_REVIEWS = 50;
 
+/** The video to rewatch for a review, with names to show the student. */
+export interface RelatedVideo extends IReviewItemVideoRef {
+  videoName?: string;
+  moduleName?: string;
+  sectionName?: string;
+}
+
 export interface DueReview {
   reviewItemId: string;
   courseId: string;
   courseVersionId: string;
+  courseName?: string;
   /** The question as a quiz shows it: options shuffled, no answers. */
   question: unknown;
-  relatedVideo?: IReviewItemVideoRef;
+  relatedVideo?: RelatedVideo;
   /** Correct reviews in a row so far. */
   repetitions: number;
   dueAt: Date;
@@ -51,7 +74,85 @@ export interface ReviewAnswerResult {
   correctAnswer: CorrectAnswerSummary;
   intervalDays: number;
   nextReviewAt: Date;
-  relatedVideo?: IReviewItemVideoRef;
+  relatedVideo?: RelatedVideo;
+}
+
+export interface CourseReviewSummary extends CourseReviewCounts {
+  courseName?: string;
+}
+
+export interface ReviewSummary {
+  /** Reviews due now across all courses. */
+  totalDue: number;
+  courses: CourseReviewSummary[];
+  /** Reviews falling due on each of the next days (IST), from tomorrow. */
+  upcoming: {date: string; count: number}[];
+}
+
+/**
+ * Looks up course and video names for one request, reading each course,
+ * version and item at most once.
+ */
+class NameLookup {
+  private courses = new Map<string, Promise<string | undefined>>();
+  private versions = new Map<string, Promise<ICourseVersion | null>>();
+  private items = new Map<string, Promise<string | undefined>>();
+
+  constructor(
+    private readonly courseRepo: ICourseRepository,
+    private readonly itemRepo: IItemRepository,
+  ) {}
+
+  courseName(courseId: string): Promise<string | undefined> {
+    if (!this.courses.has(courseId)) {
+      this.courses.set(
+        courseId,
+        this.courseRepo
+          .read(courseId)
+          .then(course => course?.name)
+          .catch(() => undefined),
+      );
+    }
+    return this.courses.get(courseId)!;
+  }
+
+  async relatedVideo(
+    courseVersionId: string,
+    ref: IReviewItemVideoRef | undefined,
+  ): Promise<RelatedVideo | undefined> {
+    if (!ref) {
+      return undefined;
+    }
+    if (!this.versions.has(courseVersionId)) {
+      this.versions.set(
+        courseVersionId,
+        this.courseRepo.readVersion(courseVersionId).catch(() => null),
+      );
+    }
+    const version = await this.versions.get(courseVersionId)!;
+    const module = version?.modules.find(
+      m => m.moduleId?.toString() === ref.moduleId,
+    );
+    const section = module?.sections.find(
+      s => s.sectionId?.toString() === ref.sectionId,
+    );
+    const itemKey = `${courseVersionId}:${ref.itemId}`;
+    if (!this.items.has(itemKey)) {
+      this.items.set(
+        itemKey,
+        this.itemRepo
+          .readItem(courseVersionId, ref.itemId)
+          .then(item => item?.name)
+          .catch(() => undefined),
+      );
+    }
+    return {
+      ...ref,
+      videoName: await this.items.get(itemKey)!,
+      moduleName: module?.name,
+      sectionName: section?.name,
+    };
+  }
 }
 
 /**
@@ -72,7 +173,47 @@ export class ReviewService {
 
     @inject(QUIZZES_TYPES.QuizRepo)
     private readonly quizRepo: QuizRepository,
+
+    @inject(GLOBAL_TYPES.CourseRepo)
+    private readonly courseRepo: ICourseRepository,
+
+    @inject(COURSES_TYPES.ItemRepo)
+    private readonly itemRepo: IItemRepository,
   ) {}
+
+  /**
+   * Counts for the student's dashboard and Reviews page: what is due now,
+   * learning and mastered items per course, and what falls due on each of the
+   * next days.
+   */
+  async getSummary(
+    userId: string,
+    now: Date = new Date(),
+  ): Promise<ReviewSummary> {
+    const names = new NameLookup(this.courseRepo, this.itemRepo);
+    const counts = await this.reviewItemRepo.countByCourseForUser(
+      userId,
+      now,
+      MASTERED_INTERVAL_DAYS,
+    );
+    const courses = await Promise.all(
+      counts.map(async c => ({
+        ...c,
+        courseName: await names.courseName(c.courseId),
+      })),
+    );
+    const upcoming = await this.reviewItemRepo.countDueByDay(
+      userId,
+      getNextReviewDate(now, 1),
+      getNextReviewDate(now, UPCOMING_REVIEW_DAYS + 1),
+      REVIEW_TIMEZONE,
+    );
+    return {
+      totalDue: courses.reduce((sum, c) => sum + c.due, 0),
+      courses,
+      upcoming,
+    };
+  }
 
   /**
    * The student's due reviews, oldest first. Items whose question has since
@@ -89,6 +230,7 @@ export class ReviewService {
       limit,
     });
 
+    const names = new NameLookup(this.courseRepo, this.itemRepo);
     const due: DueReview[] = [];
     for (const item of items) {
       // Loaded without explanations: those would give the answer away.
@@ -98,12 +240,17 @@ export class ReviewService {
       if (!isReviewableQuestion(question)) {
         continue;
       }
+      const courseVersionId = item.courseVersionId.toString();
       due.push({
         reviewItemId: item._id!.toString(),
         courseId: item.courseId.toString(),
-        courseVersionId: item.courseVersionId.toString(),
+        courseVersionId,
+        courseName: await names.courseName(item.courseId.toString()),
         question: new QuestionProcessor(question!).render(),
-        relatedVideo: item.relatedVideo,
+        relatedVideo: await names.relatedVideo(
+          courseVersionId,
+          item.relatedVideo,
+        ),
         repetitions: item.repetitions,
         dueAt: item.nextReviewAt,
       });
@@ -176,7 +323,10 @@ export class ReviewService {
       ),
       intervalDays: next.intervalDays,
       nextReviewAt,
-      relatedVideo: item.relatedVideo,
+      relatedVideo: await new NameLookup(
+        this.courseRepo,
+        this.itemRepo,
+      ).relatedVideo(item.courseVersionId.toString(), item.relatedVideo),
     };
   }
 

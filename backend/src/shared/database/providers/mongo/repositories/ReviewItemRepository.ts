@@ -19,6 +19,20 @@ export interface QuizMissInput {
   relatedVideo?: IReviewItemVideoRef;
 }
 
+/** A student's active review items in one course version, counted. */
+export interface CourseReviewCounts {
+  courseId: string;
+  courseVersionId: string;
+  /** Due now or overdue. */
+  due: number;
+  /** Not due, interval under the mastered threshold. */
+  learning: number;
+  /** Not due, interval at or above the mastered threshold. */
+  mastered: number;
+  /** The soonest due date among items not due yet. */
+  nextDueAt: Date | null;
+}
+
 /** SM-2 state and review details to save after a student answers a review. */
 export interface ReviewOutcome {
   repetitions: number;
@@ -128,6 +142,122 @@ export class ReviewItemRepository {
       .sort({nextReviewAt: 1, _id: 1})
       .limit(options.limit ?? 0)
       .toArray();
+  }
+
+  /**
+   * Counts a student's active items per course version: due now, still being
+   * learned, and mastered (interval of `masteredIntervalDays` or more).
+   */
+  async countByCourseForUser(
+    userId: string,
+    now: Date,
+    masteredIntervalDays: number,
+    session?: ClientSession,
+  ): Promise<CourseReviewCounts[]> {
+    await this.init();
+    const isDue = {$lte: ['$nextReviewAt', now]};
+    const rows = await this.reviewItemCollection
+      .aggregate<{
+        _id: {courseId: ObjectId; courseVersionId: ObjectId};
+        due: number;
+        learning: number;
+        mastered: number;
+        nextDueAt: Date | null;
+      }>(
+        [
+          {$match: {userId: new ObjectId(userId), status: 'ACTIVE'}},
+          {
+            $group: {
+              _id: {courseId: '$courseId', courseVersionId: '$courseVersionId'},
+              due: {$sum: {$cond: [isDue, 1, 0]}},
+              learning: {
+                $sum: {
+                  $cond: [
+                    {
+                      $and: [
+                        {$not: [isDue]},
+                        {$lt: ['$intervalDays', masteredIntervalDays]},
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+              mastered: {
+                $sum: {
+                  $cond: [
+                    {
+                      $and: [
+                        {$not: [isDue]},
+                        {$gte: ['$intervalDays', masteredIntervalDays]},
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+              nextDueAt: {
+                $min: {$cond: [isDue, null, '$nextReviewAt']},
+              },
+            },
+          },
+          {$sort: {due: -1, nextDueAt: 1}},
+        ],
+        {session},
+      )
+      .toArray();
+    return rows.map(row => ({
+      courseId: row._id.courseId.toString(),
+      courseVersionId: row._id.courseVersionId.toString(),
+      due: row.due,
+      learning: row.learning,
+      mastered: row.mastered,
+      nextDueAt: row.nextDueAt ?? null,
+    }));
+  }
+
+  /**
+   * How many of a student's active items fall due on each calendar day
+   * (in `timezone`) from `from` up to, but not including, `to`.
+   */
+  async countDueByDay(
+    userId: string,
+    from: Date,
+    to: Date,
+    timezone: string,
+    session?: ClientSession,
+  ): Promise<{date: string; count: number}[]> {
+    await this.init();
+    const rows = await this.reviewItemCollection
+      .aggregate<{_id: string; count: number}>(
+        [
+          {
+            $match: {
+              userId: new ObjectId(userId),
+              status: 'ACTIVE',
+              nextReviewAt: {$gte: from, $lt: to},
+            },
+          },
+          {
+            $group: {
+              _id: {
+                $dateToString: {
+                  format: '%Y-%m-%d',
+                  date: '$nextReviewAt',
+                  timezone,
+                },
+              },
+              count: {$sum: 1},
+            },
+          },
+          {$sort: {_id: 1}},
+        ],
+        {session},
+      )
+      .toArray();
+    return rows.map(row => ({date: row._id, count: row.count}));
   }
 
   /**
