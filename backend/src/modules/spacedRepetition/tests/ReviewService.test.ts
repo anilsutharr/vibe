@@ -170,6 +170,40 @@ describe('ReviewService.getDueReviews', () => {
     expect(due.relatedVideo).toMatchObject({...VIDEO, videoName: undefined});
   });
 
+  it('returns question and option ids as plain strings a client can send back', async () => {
+    const {service} = buildService();
+    const [due] = await service.getDueReviews(STUDENT, {}, NOW);
+    const question = due.question as {
+      _id: unknown;
+      lotItems: {_id: unknown}[];
+    };
+    expect(question._id).toBe(QUESTION_ID.toString());
+    expect(question.lotItems.map(o => o._id).sort()).toEqual(
+      [RIGHT_OPTION.toString(), WRONG_OPTION.toString()].sort(),
+    );
+  });
+
+  it('grades an option id taken from the due list as correct', async () => {
+    // Regression: ids used to reach the client as {buffer: ...} objects, so a
+    // correct choice was always graded INCORRECT.
+    const {service} = buildService();
+    const [due] = await service.getDueReviews(STUDENT, {}, NOW);
+    const shown = (due.question as {lotItems: {_id: string; text: string}[]})
+      .lotItems;
+    const chosen = shown.find(o => o.text === 'Gradient descent')!;
+    const result = await service.answerReview(
+      STUDENT,
+      ITEM_ID,
+      {
+        questionType: 'SELECT_ONE_IN_LOT',
+        answer: {lotItemId: chosen._id},
+        confidence: 'SURE',
+      },
+      NOW,
+    );
+    expect(result.status).toBe('CORRECT');
+  });
+
   it('skips items whose question was deleted', async () => {
     const {service} = buildService({question: null});
     expect(await service.getDueReviews(STUDENT, {}, NOW)).toEqual([]);

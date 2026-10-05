@@ -246,7 +246,13 @@ export class ReviewService {
         courseId: item.courseId.toString(),
         courseVersionId,
         courseName: await names.courseName(item.courseId.toString()),
-        question: new QuestionProcessor(question!).render(),
+        // Round-trip through JSON so every ObjectId (question and option ids)
+        // becomes a hex string. Left as ObjectIds, the controller's response
+        // transform serialises them as {buffer: ...} objects, and the client
+        // then submits an option id the grader can never match.
+        question: JSON.parse(
+          JSON.stringify(new QuestionProcessor(question!).render()),
+        ),
         relatedVideo: await names.relatedVideo(
           courseVersionId,
           item.relatedVideo,
