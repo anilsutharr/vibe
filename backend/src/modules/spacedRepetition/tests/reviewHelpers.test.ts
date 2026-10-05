@@ -100,16 +100,46 @@ describe('describeCorrectAnswer', () => {
     ).toEqual(['Collect data', 'Train', 'Evaluate']);
   });
 
-  it('gives the exact value or accepted range for numeric answers', () => {
-    expect(
-      describeCorrectAnswer({type: 'NUMERIC_ANSWER_TYPE', value: 0.5}),
-    ).toEqual({answers: ['0.5'], explanations: []});
+  it('gives the exact value for a numeric answer with no tolerance', () => {
     expect(
       describeCorrectAnswer({
         type: 'NUMERIC_ANSWER_TYPE',
-        lowerLimit: 3,
-        upperLimit: 4,
+        value: 0.5,
+        decimalPrecision: 2,
+        lowerLimit: 0,
+        upperLimit: 0,
+      }),
+    ).toEqual({answers: ['0.5'], explanations: []});
+  });
+
+  it('treats numeric limits as tolerances around the expected value, as the grader does', () => {
+    // NATQuestionGrader accepts expected - lowerLimit .. expected + upperLimit.
+    expect(
+      describeCorrectAnswer({
+        type: 'NUMERIC_ANSWER_TYPE',
+        value: 3.14159,
+        decimalPrecision: 2,
+        lowerLimit: 0.01,
+        upperLimit: 0.02,
       }).answers,
-    ).toEqual(['3 to 4']);
+    ).toEqual(['3.14 (accepted from 3.13 to 3.16)']);
+  });
+
+  it('computes a numeric answer from its expression, which wins over the stored value', () => {
+    expect(
+      describeCorrectAnswer({
+        type: 'NUMERIC_ANSWER_TYPE',
+        expression: '2 * 3 + 1',
+        value: 99,
+        decimalPrecision: 0,
+      }).answers,
+    ).toEqual(['7']);
+  });
+
+  it('gives no numeric answer when neither value nor expression is usable', () => {
+    expect(
+      describeCorrectAnswer({type: 'NUMERIC_ANSWER_TYPE', expression: 'x +'})
+        .answers,
+    ).toEqual([]);
   });
 });
