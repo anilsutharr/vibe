@@ -30,6 +30,14 @@ Only one alert is sent per run of failures. A correct answer ends the run, so if
 - **It is quiet.** One alert per failure streak means instructors are not flooded by a student retrying the same quiz.
 - **It is safe.** It never affects quiz scores, progress or submissions, and the whole feature is behind a switch that is off by default.
 
+## Demo video
+
+A one-minute walkthrough on a local setup (no audio): a student fails the same question for the third time and sees the supportive message. The instructor then gets the alert and opens that student's progress with **View progress**.
+
+<video controls width="100%" src={require('./struggling-student-alerts-demo.mp4').default} />
+
+[Download the demo video](./struggling-student-alerts-demo.mp4)
+
 ## How it works
 
 ```text
